@@ -978,11 +978,16 @@ void CHyprMasterLayout::alterSplitRatio(PHLWINDOW pWindow, float ratio, bool exa
     recalculateMonitor(pWindow->monitorID());
 }
 
-PHLWINDOW CHyprMasterLayout::getNextWindow(PHLWINDOW pWindow, bool next) {
+PHLWINDOW CHyprMasterLayout::getNextWindow(PHLWINDOW pWindow, bool next, bool cycle) {
     if (!isWindowTiled(pWindow))
         return nullptr;
 
     const auto PNODE = getNodeFromWindow(pWindow);
+
+    const bool ISMASTER = PNODE->isMaster;
+
+    if (ISMASTER && !next && !cycle)
+        return nullptr;
 
     auto       nodes = m_lMasterNodesData;
     if (!next)
@@ -990,12 +995,13 @@ PHLWINDOW CHyprMasterLayout::getNextWindow(PHLWINDOW pWindow, bool next) {
 
     const auto NODEIT = std::find(nodes.begin(), nodes.end(), *PNODE);
 
-    const bool ISMASTER = PNODE->isMaster;
-
     auto CANDIDATE = std::find_if(NODEIT, nodes.end(), [&](const auto& other) { return other != *PNODE && ISMASTER == other.isMaster && other.workspaceID == PNODE->workspaceID; });
-    if (CANDIDATE == nodes.end())
+    if (CANDIDATE == nodes.end()) {
+        if (!cycle)
+            return nullptr;
         CANDIDATE =
             std::find_if(nodes.begin(), nodes.end(), [&](const auto& other) { return other != *PNODE && ISMASTER != other.isMaster && other.workspaceID == PNODE->workspaceID; });
+    }
 
     return CANDIDATE == nodes.end() ? nullptr : CANDIDATE->pWindow.lock();
 }
@@ -1110,7 +1116,8 @@ std::any CHyprMasterLayout::layoutMessage(SLayoutMessageHeader header, std::stri
         if (!PWINDOW)
             return 0;
 
-        const auto PNEXTWINDOW = getNextWindow(PWINDOW, true);
+        const bool cycle = vars.size() == 2 && vars[1] == "cycle";
+        const auto PNEXTWINDOW = getNextWindow(PWINDOW, true, cycle);
         switchToWindow(PNEXTWINDOW);
     } else if (command == "cycleprev") {
         const auto PWINDOW = header.pWindow;
@@ -1118,7 +1125,8 @@ std::any CHyprMasterLayout::layoutMessage(SLayoutMessageHeader header, std::stri
         if (!PWINDOW)
             return 0;
 
-        const auto PPREVWINDOW = getNextWindow(PWINDOW, false);
+        const bool cycle = vars.size() == 2 && vars[1] == "cycle";
+        const auto PPREVWINDOW = getNextWindow(PWINDOW, false, cycle);
         switchToWindow(PPREVWINDOW);
     } else if (command == "swapnext") {
         if (!validMapped(header.pWindow))
@@ -1129,7 +1137,8 @@ std::any CHyprMasterLayout::layoutMessage(SLayoutMessageHeader header, std::stri
             return 0;
         }
 
-        const auto PWINDOWTOSWAPWITH = getNextWindow(header.pWindow, true);
+        const bool cycle = vars.size() == 2 && vars[1] == "cycle";
+        const auto PWINDOWTOSWAPWITH = getNextWindow(header.pWindow, true, cycle);
 
         if (PWINDOWTOSWAPWITH) {
             g_pCompositor->setWindowFullscreenInternal(header.pWindow, FSMODE_NONE);
@@ -1145,7 +1154,8 @@ std::any CHyprMasterLayout::layoutMessage(SLayoutMessageHeader header, std::stri
             return 0;
         }
 
-        const auto PWINDOWTOSWAPWITH = getNextWindow(header.pWindow, false);
+        const bool cycle = vars.size() == 2 && vars[1] == "cycle";
+        const auto PWINDOWTOSWAPWITH = getNextWindow(header.pWindow, false, cycle);
 
         if (PWINDOWTOSWAPWITH) {
             g_pCompositor->setWindowFullscreenClient(header.pWindow, FSMODE_NONE);
